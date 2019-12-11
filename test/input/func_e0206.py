@@ -1,16 +1,16 @@
-# pylint: disable-msg=R0903
+# pylint: disable=R0903
 """check for interface which are not classes"""
 
 __revision__ = None
 
-class Abcd:
+class Abcd(object):
     """dummy"""
     __implements__ = __revision__
-    
-    def __init__(self):
-        self.attr = None 
 
-class Cdef:
+    def __init__(self):
+        self.attr = None
+
+class Cdef(object):
     """dummy"""
     __implements__ = (__revision__, Abcd)
 

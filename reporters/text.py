@@ -1,3 +1,4 @@
+# Copyright (c) 2003-2013 LOGILAB S.A. (Paris, FRANCE).
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
 # Foundation; either version 2 of the License, or (at your option) any later
@@ -9,99 +10,87 @@
 #
 # You should have received a copy of the GNU General Public License along with
 # this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-""" Copyright (c) 2000-2003 LOGILAB S.A. (Paris, FRANCE).
- http://www.logilab.fr/ -- mailto:contact@logilab.fr
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+"""Plain text reporters:
 
-Plain text reporter
+:text: the default one grouping messages by module
+:colorized: an ANSI colorized text reporter
 """
+from __future__ import print_function
 
-__revision__ = "$Id: text.py,v 1.21 2005-12-28 00:24:35 syt Exp $"
-
-import os
-import sys
+import warnings
 
 from logilab.common.ureports import TextWriter
 from logilab.common.textutils import colorize_ansi
 
 from pylint.interfaces import IReporter
 from pylint.reporters import BaseReporter
+import six
 
 TITLE_UNDERLINES = ['', '=', '-', '.']
 
 
-## def modname_to_path(modname, prefix=os.getcwd() + os.sep):
-##     """transform a module name into a path"""
-##     module = load_module_from_name(modname).__file__.replace(prefix, '')
-##     return module.replace('.pyc', '.py').replace('.pyo', '.py')
-
-
 class TextReporter(BaseReporter):
-    """reports messages and layouts in plain text
-    """
-    
-    __implements__ = IReporter
-    extension = 'txt'
-    
-    def __init__(self, output=sys.stdout):
-        BaseReporter.__init__(self, output)
-        self._modules = {}
+    """reports messages and layouts in plain text"""
 
-    def add_message(self, msg_id, location, msg):
+    __implements__ = IReporter
+    name = 'text'
+    extension = 'txt'
+    line_format = '{C}:{line:3d},{column:2d}: {msg} ({symbol})'
+
+    def __init__(self, output=None):
+        BaseReporter.__init__(self, output)
+        self._modules = set()
+        self._template = None
+
+    def on_set_current_module(self, module, filepath):
+        self._template = six.text_type(self.linter.config.msg_template or self.line_format)
+
+    def write_message(self, msg):
+        """Convenience method to write a formated message with class default template"""
+        self.writeln(msg.format(self._template))
+
+    def handle_message(self, msg):
         """manage message of different type and in the context of path"""
-        module, obj, line = location[1:]
-        if not self._modules.has_key(module):
-            self.writeln('************* Module %s' % module)
-            self._modules[module] = 1
-        if obj:
-            obj = ':%s' % obj
-        if self.include_ids:
-            sigle = msg_id
-        else:
-            sigle = msg_id[0]
-        self.writeln('%s:%3s%s: %s' % (sigle, line, obj, msg))
+        if msg.module not in self._modules:
+            if msg.module:
+                self.writeln('************* Module %s' % msg.module)
+                self._modules.add(msg.module)
+            else:
+                self.writeln('************* ')
+        self.write_message(msg)
 
     def _display(self, layout):
         """launch layouts display"""
-        print >> self.out 
+        print(file=self.out)
         TextWriter().format(layout, self.out)
 
 
-class TextReporter2(TextReporter):
+class ParseableTextReporter(TextReporter):
     """a reporter very similar to TextReporter, but display messages in a form
     recognized by most text editors :
-    
+
     <filename>:<linenum>:<msg>
     """
-    def __init__(self, output=sys.stdout, relative=True):
-        TextReporter.__init__(self, output)
-        if relative:
-            self._prefix = os.getcwd() + os.sep
-        else:
-            self._prefix = ''
+    name = 'parseable'
+    line_format = '{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}'
 
-    def add_message(self, msg_id, location, msg):
-        """manage message of different type and in the context of path"""
-        path, _, obj, line = location
-        if obj:
-            obj = ', %s' % obj
-        if self.include_ids:
-            sigle = msg_id
-        else:
-            sigle = msg_id[0]
-        if self._prefix:
-            path = path.replace(self._prefix, '')
-##         try:
-##             modpath = self._modules[module]
-##         except KeyError:
-##             modpath = self._modules[module] = self.linter.current_file or \
-##                       modname_to_path(module)
-        self.writeln('%s:%s: [%s%s] %s' % (path, line, sigle, obj, msg))
-    
+    def __init__(self, output=None):
+        warnings.warn('%s output format is deprecated. This is equivalent '
+                      'to --msg-template=%s' % (self.name, self.line_format))
+        TextReporter.__init__(self, output)
+
+
+class VSTextReporter(ParseableTextReporter):
+    """Visual studio text reporter"""
+    name = 'msvs'
+    line_format = '{path}({line}): [{msg_id}({symbol}){obj}] {msg}'
+
 
 class ColorizedTextReporter(TextReporter):
     """Simple TextReporter that colorizes text output"""
 
+    name = 'colorized'
     COLOR_MAPPING = {
         "I" : ("green", None),
         'C' : (None, "bold"),
@@ -112,40 +101,45 @@ class ColorizedTextReporter(TextReporter):
         'S' : ("yellow", "inverse"), # S stands for module Separator
     }
 
-    def __init__(self, output=sys.stdout, color_mapping = None):
+    def __init__(self, output=None, color_mapping=None):
         TextReporter.__init__(self, output)
         self.color_mapping = color_mapping or \
                              dict(ColorizedTextReporter.COLOR_MAPPING)
-       
 
     def _get_decoration(self, msg_id):
         """Returns the tuple color, style associated with msg_id as defined
         in self.color_mapping
         """
         try:
-            return self.color_mapping[msg_id]
+            return self.color_mapping[msg_id[0]]
         except KeyError:
             return None, None
 
-    def add_message(self, msg_id, location, msg):
+    def handle_message(self, msg):
         """manage message of different types, and colorize output
         using ansi escape codes
         """
-        module, obj, line = location[1:]
-        if not self._modules.has_key(module):
+        if msg.module not in self._modules:
             color, style = self._get_decoration('S')
-            modsep = colorize_ansi('************* Module %s' % module,
-                                   color, style)
+            if msg.module:
+                modsep = colorize_ansi('************* Module %s' % msg.module,
+                                       color, style)
+            else:
+                modsep = colorize_ansi('************* %s' % msg.module,
+                                       color, style)
             self.writeln(modsep)
-            self._modules[module] = 1
-        if obj:
-            obj = ':%s' % obj
-        if self.include_ids:
-            sigle = msg_id
-        else:
-            sigle = msg_id[0]
-        color, style = self._get_decoration(sigle)
-        msg = colorize_ansi(msg, color, style)
-        sigle = colorize_ansi(sigle, color, style)
-        self.writeln('%s:%3s%s: %s' % (sigle, line, obj, msg))
- 
+            self._modules.add(msg.module)
+        color, style = self._get_decoration(msg.C)
+
+        msg = msg._replace(
+            **{attr: colorize_ansi(getattr(msg, attr), color, style)
+               for attr in ('msg', 'symbol', 'category', 'C')}) 
+        self.write_message(msg)
+
+
+def register(linter):
+    """Register the reporter classes with the linter."""
+    linter.register_reporter(TextReporter)
+    linter.register_reporter(ParseableTextReporter)
+    linter.register_reporter(VSTextReporter)
+    linter.register_reporter(ColorizedTextReporter)

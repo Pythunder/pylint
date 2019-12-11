@@ -1,4 +1,4 @@
-#pylint: disable-msg=C0103,R0904,R0903,W0201
+#pylint: disable=C0103,R0904,R0903,W0201,old-style-class
 """
 This module demonstrates a possible problem of pyLint with calling __init__ s
 from inherited classes.
@@ -13,8 +13,8 @@ import telnetlib
 class SeeTelnet(telnetlib.Telnet):
     """
     Extension of telnetlib.
-    """   
-   
+    """
+
     def __init__(self, host=None, port=0):
         """
         Constructor.
@@ -34,16 +34,14 @@ class SeeTelnet(telnetlib.Telnet):
         """
         self.process_rawq()
         maxLength = 0
-        index = -1
         for match in matches:
-            index += 1
             if len(match) > maxLength:
                 maxLength = len(match)
 
 class Base(object):
     """bla bla"""
     dougloup_papa = None
-    
+
     def __init__(self):
         self._var = False
 
@@ -58,7 +56,7 @@ class Derived(Base):
         else:
             print "False"
         self._var = True
-        
+
         # E0203 - Access to member 'dougloup_papa' before its definition
         if self.dougloup_papa:
             print 'dougloup !'
@@ -67,13 +65,13 @@ class Derived(Base):
         if self.dougloup_moi:
             print 'dougloup !'
         self.dougloup_moi = True
-            
+
 
 class QoSALConnection(object):
     """blabla"""
-    
+
     _the_instance = None
-    
+
     def __new__(cls):
         if cls._the_instance is None:
             cls._the_instance = object.__new__(cls)
@@ -82,7 +80,7 @@ class QoSALConnection(object):
     def __init__(self):
         pass
 
-class DefinedOutsideInit:
+class DefinedOutsideInit(object):
     """use_attr is seen as the method defining attr because its in
     first position
     """

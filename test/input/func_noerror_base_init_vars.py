@@ -1,20 +1,20 @@
-# pylint:disable-msg=R0201
+# pylint:disable=R0201
 """Checks that class variables are seen as inherited !
 """
 __revision__ = ''
 
-class BaseClass:
+class BaseClass(object):
     """A simple base class
     """
-    
+
     def __init__(self):
         self.base_var = {}
 
     def met(self):
         """yo"""
-    def meeting(self, with):
+    def meeting(self, with_):
         """ye"""
-        return with
+        return with_
 class MyClass(BaseClass):
     """Inherits from BaseClass
     """

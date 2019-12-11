@@ -12,14 +12,13 @@
 #
 # You should have received a copy of the GNU General Public License along with
 # this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-"""test the pylint.checkers.utils module
-"""
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+"""Tests for the pylint.checkers.utils module."""
 
-__revision__ = '$Id: unittest_checkers_utils.py,v 1.6 2005-11-02 09:22:07 syt Exp $'
-
-import unittest
 import sys
+import unittest
+
+from astroid import test_utils
 
 from pylint.checkers import utils
 try:
@@ -30,19 +29,42 @@ except AttributeError:
 class UtilsTC(unittest.TestCase):
     
 ##     def test_is_native_builtin(self):
-##         self.assertEquals(utils.is_native_builtin('min'), True)
-##         self.assertEquals(utils.is_native_builtin('__path__'), True)
-##         self.assertEquals(utils.is_native_builtin('__file__'), True)
-##         self.assertEquals(utils.is_native_builtin('whatever'), False)
-##         self.assertEquals(utils.is_native_builtin('mybuiltin'), False)
+##         self.assertEqual(utils.is_native_builtin('min'), True)
+##         self.assertEqual(utils.is_native_builtin('__path__'), True)
+##         self.assertEqual(utils.is_native_builtin('__file__'), True)
+##         self.assertEqual(utils.is_native_builtin('whatever'), False)
+##         self.assertEqual(utils.is_native_builtin('mybuiltin'), False)
 
     def test_is_builtin(self):
-        self.assertEquals(utils.is_builtin('min'), True)
-        self.assertEquals(utils.is_builtin('__builtins__'), True)
-        self.assertEquals(utils.is_builtin('__path__'), False)
-        self.assertEquals(utils.is_builtin('__file__'), False)
-        self.assertEquals(utils.is_builtin('whatever'), False)
-        self.assertEquals(utils.is_builtin('mybuiltin'), False)
+        self.assertEqual(utils.is_builtin('min'), True)
+        self.assertEqual(utils.is_builtin('__builtins__'), True)
+        self.assertEqual(utils.is_builtin('__path__'), False)
+        self.assertEqual(utils.is_builtin('__file__'), False)
+        self.assertEqual(utils.is_builtin('whatever'), False)
+        self.assertEqual(utils.is_builtin('mybuiltin'), False)
+
+    def testGetArgumentFromCall(self):
+        node = test_utils.extract_node('foo(bar=3)')
+        self.assertIsNotNone(utils.get_argument_from_call(node, keyword='bar'))
+        with self.assertRaises(utils.NoSuchArgumentError):
+            node = test_utils.extract_node('foo(3)')
+            utils.get_argument_from_call(node, keyword='bar')
+        with self.assertRaises(utils.NoSuchArgumentError):
+            node = test_utils.extract_node('foo(one=a, two=b, three=c)')
+            utils.get_argument_from_call(node, position=1)
+        node = test_utils.extract_node('foo(a, b, c)')
+        self.assertIsNotNone(utils.get_argument_from_call(node, position=1))
+        node = test_utils.extract_node('foo(a, not_this_one=1, this_one=2)')
+        arg = utils.get_argument_from_call(node, position=1, keyword='this_one')
+        self.assertEqual(2, arg.value)
+        node = test_utils.extract_node('foo(a)')
+        with self.assertRaises(utils.NoSuchArgumentError):
+            utils.get_argument_from_call(node, position=1)
+        with self.assertRaises(ValueError):
+            utils.get_argument_from_call(node, None, None)
+                
+        name = utils.get_argument_from_call(node, position=0)
+        self.assertEqual(name.name, 'a')
 
 if __name__ == '__main__':
     unittest.main()

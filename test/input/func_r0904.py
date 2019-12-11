@@ -1,11 +1,11 @@
-# pylint: disable-msg=R0201
+# pylint: disable=R0201
 """test max methods"""
 __revision__ = None
-class Aaaa:
+class Aaaa(object):
     """yo"""
     def __init__(self):
         pass
-    
+
     def meth1(self):
         """hehehe"""
 

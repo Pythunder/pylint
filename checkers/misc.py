@@ -1,4 +1,4 @@
-# pylint: disable-msg=W0511
+# pylint: disable=W0511
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
 # Foundation; either version 2 of the License, or (at your option) any later
@@ -10,65 +10,37 @@
 #
 # You should have received a copy of the GNU General Public License along with
 # this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-""" Copyright (c) 2000-2003 LOGILAB S.A. (Paris, FRANCE).
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+""" Copyright (c) 2000-2010 LOGILAB S.A. (Paris, FRANCE).
  http://www.logilab.fr/ -- mailto:contact@logilab.fr
 
 Check source code is ascii only or has an encoding declaration (PEP 263)
 """
 
-__revision__ = '$Id: misc.py,v 1.19 2005-11-02 09:21:47 syt Exp $'
-
 import re
 
 from pylint.interfaces import IRawChecker
 from pylint.checkers import BaseChecker
+import six
 
-def is_ascii(string):
-    """return true if non ascii characters are detected in the given string
-    """
-    if string:
-        return max([ord(char) for char in string]) < 128
-    return True
-    
-# regexp matching both emacs and vim declaration
-ENCODING_RGX = re.compile("[^#]*#*.*coding[:=]\s*([^\s]+)")
 
-def guess_encoding(string):
-    """try to guess encoding from a python file as string
-    return None if not found
-    """
-    assert type(string) is type(''), type(string)
-    # check for UTF-8 byte-order mark
-    if string.startswith('\xef\xbb\xbf'):
-        return 'UTF-8'
-    first_lines = string.split('\n', 2)[:2]
-    for line in first_lines:
-        # check for emacs / vim encoding declaration
-        match = ENCODING_RGX.match(line)
-        if match is not None:
-            return match.group(1)
-
-        
 MSGS = {
-    'E0501': ('Non ascii characters found but no encoding specified (PEP 263)',
-              'Used when some non ascii characters are detected but now \
-              encoding is specified, as explicited in the PEP 263.'),
-    'E0502': ('Wrong encoding specified (%s)',
-              'Used when a known encoding is specified but the file doesn\'t \
-              seem to be actually in this encoding.'),
-    'E0503': ('Unknown encoding specified (%s)',
-              'Used when an encoding is specified, but it\'s unknown to Python.'
-              ),
-    
     'W0511': ('%s',
+              'fixme',
               'Used when a warning note as FIXME or XXX is detected.'),
-    }
+    'W0512': ('Cannot decode using encoding "%s", unexpected byte at position %d',
+              'invalid-encoded-data',
+              'Used when a source line cannot be decoded using the specified '
+              'source file encoding.',
+              {'maxversion': (3, 0)}),
+}
+
 
 class EncodingChecker(BaseChecker):
-    """checks for:                                                             
-    * warning notes in the code like FIXME, XXX                                
-    * PEP 263: source code with non ascii character but no encoding declaration
+
+    """checks for:
+    * warning notes in the code like FIXME, XXX
+    * encoding issues.
     """
     __implements__ = IRawChecker
 
@@ -77,51 +49,57 @@ class EncodingChecker(BaseChecker):
     msgs = MSGS
 
     options = (('notes',
-                {'type' : 'csv', 'metavar' : '<comma separated values>',
-                 'default' : ('FIXME', 'XXX', 'TODO'),
-                 'help' : 'List of note tags to take in consideration, \
-separated by a comma. Default to FIXME, XXX, TODO'
-                 }),               
-               )
+                {'type': 'csv', 'metavar': '<comma separated values>',
+                 'default': ('FIXME', 'XXX', 'TODO'),
+                 'help': ('List of note tags to take in consideration, '
+                          'separated by a comma.')}),)
 
-    def __init__(self, linter=None):
-        BaseChecker.__init__(self, linter)
-    
-    def process_module(self, stream):
-        """inspect the source file to found encoding problem or fixmes like
+    def _check_note(self, notes, lineno, line):
+        # First, simply check if the notes are in the line at all. This is an
+        # optimisation to prevent using the regular expression on every line,
+        # but rather only on lines which may actually contain one of the notes.
+        # This prevents a pathological problem with lines that are hundreds
+        # of thousands of characters long.
+        for note in self.config.notes:
+            if note in line:
+                break
+        else:
+            return
+
+        match = notes.search(line)
+        if not match:
+            return
+        self.add_message('fixme', args=line[match.start(1):-1], line=lineno)
+
+    def _check_encoding(self, lineno, line, file_encoding):
+        try:
+            return six.text_type(line, file_encoding)
+        except UnicodeDecodeError as ex:
+            self.add_message('invalid-encoded-data', line=lineno,
+                             args=(file_encoding, ex.args[2]))
+
+    def process_module(self, module):
+        """inspect the source file to find encoding problem or fixmes like
         notes
         """
-        # source encoding
-        data = stream.read()
-        if not is_ascii(data):
-            encoding = guess_encoding(data)
-            if encoding is None:
-                self.add_message('E0501', line=1)
-            else:
-                try:
-                    unicode(data, encoding)
-                except UnicodeError:
-                    self.add_message('E0502', args=encoding, line=1)
-                except LookupError:
-                    self.add_message('E0503', args=encoding, line=1)
-        del data
-        # warning notes in the code
-        stream.seek(0)
-        notes = []
-        for note in self.config.notes:
-            notes.append(re.compile(note))
-        linenum = 1
-        for line in stream.readlines():
-            for note in notes:
-                match = note.search(line)
-                if match:
-                    self.add_message('W0511', args=line[match.start():-1],
-                                     line=linenum)
-                    break
-            linenum += 1
-                    
-                
-            
+        stream = module.file_stream
+        stream.seek(0)  # XXX may be removed with astroid > 0.23
+        if self.config.notes:
+            notes = re.compile(
+                r'.*?#\s*(%s)(:*\s*.+)' % "|".join(self.config.notes))
+        else:
+            notes = None
+        if module.file_encoding:
+            encoding = module.file_encoding
+        else:
+            encoding = 'ascii'
+
+        for lineno, line in enumerate(stream):
+            line = self._check_encoding(lineno + 1, line, encoding)
+            if line is not None and notes:
+                self._check_note(notes, lineno + 1, line)
+
+
 def register(linter):
     """required method to auto register this checker"""
     linter.register_checker(EncodingChecker(linter))

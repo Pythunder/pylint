@@ -1,4 +1,4 @@
-# Copyright (c) 2005-2006 LOGILAB S.A. (Paris, FRANCE).
+# Copyright (c) 2005-2014 LOGILAB S.A. (Paris, FRANCE).
 # http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This program is free software; you can redistribute it and/or modify it under
@@ -12,36 +12,46 @@
 #
 # You should have received a copy of the GNU General Public License along with
 # this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 """check for new / old style related problems
 """
+import sys
 
-__revision__ = "$Id: newstyle.py,v 1.8 2006-03-05 14:39:38 syt Exp $"
+import astroid
 
-from logilab import astng
-
-from pylint.interfaces import IASTNGChecker
+from pylint.interfaces import IAstroidChecker, INFERENCE, INFERENCE_FAILURE, HIGH
 from pylint.checkers import BaseChecker
+from pylint.checkers.utils import check_messages, has_known_bases
 
 MSGS = {
-    'E1001': ('Use __slots__ on an old style class',
-              'Used when an old style class use the __slots__ attribute.'),
-    'E1002': ('Use super on an old style class',
-              'Used when an old style class use the super builtin.'),
-    'E1003': ('Bad first argument %r given to super class',
+    'E1001': ('Use of __slots__ on an old style class',
+              'slots-on-old-class',
+              'Used when an old style class uses the __slots__ attribute.',
+              {'maxversion': (3, 0)}),
+    'E1002': ('Use of super on an old style class',
+              'super-on-old-class',
+              'Used when an old style class uses the super builtin.',
+              {'maxversion': (3, 0)}),
+    'E1003': ('Bad first argument %r given to super()',
+              'bad-super-call',
               'Used when another argument than the current class is given as \
               first argument of the super builtin.'),
-    'E1010': ('Raising a new style class',
-              'Used when a new style class is raised since it\'s not yet \
-              possible.'),
-    
+    'E1004': ('Missing argument to super()',
+              'missing-super-argument',
+              'Used when the super builtin didn\'t receive an \
+               argument.',
+              {'maxversion': (3, 0)}),
     'W1001': ('Use of "property" on an old style class',
+              'property-on-old-class',
               'Used when PyLint detect the use of the builtin "property" \
               on an old style class while this is relying on new style \
-              classes features'),
-    'W1010': ('Exception doesn\'t inherit from standard "Exception" class',
-              'Used when a custom exception class is raised but doesn\'t \
-              inherit from the builtin "Exception" class.'),
+              classes features.',
+              {'maxversion': (3, 0)}),
+    'C1001': ('Old-style class defined.',
+              'old-style-class',
+              'Used when a class is defined that does not inherit from another'
+              'class and does not inherit explicitly from "object".',
+              {'maxversion': (3, 0)})
     }
 
 
@@ -50,10 +60,9 @@ class NewStyleConflictChecker(BaseChecker):
     other new/old styles conflicts problems
     * use of property, __slots__, super
     * "super" usage
-    * raising a new style class as exception
     """
-    
-    __implements__ = (IASTNGChecker,)
+
+    __implements__ = (IAstroidChecker,)
 
     # configuration section name
     name = 'newstyle'
@@ -63,86 +72,94 @@ class NewStyleConflictChecker(BaseChecker):
     # configuration options
     options = ()
 
-#    def __init__(self, linter=None):
-#        BaseChecker.__init__(self, linter)
-        
+    @check_messages('slots-on-old-class', 'old-style-class')
     def visit_class(self, node):
-        """check __slots__ usage
-        """        
+        """ Check __slots__ in old style classes and old
+        style class definition.
+        """
         if '__slots__' in node and not node.newstyle:
-            self.add_message('E1001', node=node)
-        
+            confidence = (INFERENCE if has_known_bases(node)
+                          else INFERENCE_FAILURE)
+            self.add_message('slots-on-old-class', node=node,
+                             confidence=confidence)
+        # The node type could be class, exception, metaclass, or
+        # interface.  Presumably, the non-class-type nodes would always
+        # have an explicit base class anyway.
+        if not node.bases and node.type == 'class' and not node.metaclass():
+            # We use confidence HIGH here because this message should only ever
+            # be emitted for classes at the root of the inheritance hierarchyself.
+            self.add_message('old-style-class', node=node, confidence=HIGH)
+
+    @check_messages('property-on-old-class')
     def visit_callfunc(self, node):
         """check property usage"""
         parent = node.parent.frame()
-        if (isinstance(parent, astng.Class) and
-            not parent.newstyle and
-            isinstance(node.node, astng.Name)):
-            name = node.node.name
+        if (isinstance(parent, astroid.Class) and
+                not parent.newstyle and
+                isinstance(node.func, astroid.Name)):
+            confidence = (INFERENCE if has_known_bases(parent)
+                          else INFERENCE_FAILURE)
+            name = node.func.name
             if name == 'property':
-                self.add_message('W1001', node=node)
-        
-    def visit_raise(self, node):
-        """check for raising new style class
-        """
-        # ignore empty raise
-        if node.expr1 is None:
-            return
-        if not isinstance(node.expr1, (astng.Const, astng.Mod)):
-            try:
-                name = node.expr1.nodes_of_class(astng.Name).next()
-                value = name.infer().next()
-            except (StopIteration, astng.ResolveError):
-                pass
-            else:
-                if isinstance(value, astng.Class):
-                    if value.newstyle:
-                        self.add_message('E1010', node=node)
-                    elif not inherit_from_std_ex(value):
-                        self.add_message('W1010', node=node)
-                        
+                self.add_message('property-on-old-class', node=node, 
+                                 confidence=confidence)
+
+    @check_messages('super-on-old-class', 'bad-super-call', 'missing-super-argument')
     def visit_function(self, node):
         """check use of super"""
         # ignore actual functions or method within a new style class
         if not node.is_method():
             return
         klass = node.parent.frame()
-        for stmt in node.nodes_of_class(astng.CallFunc):
-            expr = stmt.node
-            if not isinstance(expr, astng.Getattr):
+        for stmt in node.nodes_of_class(astroid.CallFunc):
+            expr = stmt.func
+            if not isinstance(expr, astroid.Getattr):
                 continue
             call = expr.expr
             # skip the test if using super
-            if isinstance(call, astng.CallFunc) and \
-               isinstance(call.node, astng.Name) and \
-               call.node.name == 'super':
+            if isinstance(call, astroid.CallFunc) and \
+               isinstance(call.func, astroid.Name) and \
+               call.func.name == 'super':
+                confidence = (INFERENCE if has_known_bases(klass)
+                              else INFERENCE_FAILURE)
                 if not klass.newstyle:
                     # super should not be used on an old style class
-                    self.add_message('E1002', node=node)
+                    self.add_message('super-on-old-class', node=node,
+                                      confidence=confidence)
                 else:
                     # super first arg should be the class
-                    try:
-                        supcls = (call.args and call.args[0].infer().next()
-                                  or None)
-                    except astng.InferenceError:
+                    if not call.args and sys.version_info[0] == 3:
+                        # unless Python 3
                         continue
+
+                    try:
+                        supcls = (call.args and next(call.args[0].infer())
+                                  or None)
+                    except astroid.InferenceError:
+                        continue
+
+                    if supcls is None:
+                        self.add_message('missing-super-argument', node=call,
+                                         confidence=confidence)
+                        continue
+
                     if klass is not supcls:
-                        supcls = getattr(supcls, 'name', supcls)
-                        self.add_message('E1003', node=node, args=supcls)
-                            
-                    
-                        
-def inherit_from_std_ex(node):
-    """return true if the given class node is subclass of
-    exceptions.Exception
-    """
-    if node.name == 'Exception' and node.root().name == 'exceptions':
-        return True
-    for parent in node.ancestors(recurs=False):
-        if inherit_from_std_ex(parent):
-            return True
-    return False
-        
+                        name = None
+                        # if supcls is not YES, then supcls was infered
+                        # and use its name. Otherwise, try to look
+                        # for call.args[0].name
+                        if supcls is not astroid.YES:
+                            name = supcls.name
+                        else:
+                            if hasattr(call.args[0], 'name'):
+                                name = call.args[0].name
+                        if name is not None:
+                            self.add_message('bad-super-call',
+                                             node=call,
+                                             args=(name, ),
+                                             confidence=confidence)
+
+
 def register(linter):
     """required method to auto register this checker """
     linter.register_checker(NewStyleConflictChecker(linter))

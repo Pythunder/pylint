@@ -1,7 +1,5 @@
 .. -*- coding: utf-8 -*-
 
-.. _faq:
-
 ==========================
 Frequently Asked Questions
 ==========================
@@ -18,6 +16,31 @@ standard, and tries to enforce a coding style.
 
 .. _`static code checker`: http://en.wikipedia.org/wiki/Static_code_analysis
 
+1.2 How is Pylint different from Pychecker?
+-------------------------------------------
+
+A major difference between Pylint and Pychecker_ is that Pylint checks for
+style issues, while Pychecker explicitly does not. There are a few other
+differences, such as the fact that Pylint does not import live modules while
+Pychecker does (see `6.2 Why does Pychecker catch problems with imports that
+Pylint doesn't?`_).
+
+.. _Pychecker: http://pychecker.sf.net
+
+1.3 Who wrote Pylint?
+---------------------
+
+Pylint's main author and maintainer for the first ten years of its life has been
+Sylvain Thénault, while he worked at Logilab_ where the project was born. For a
+full list of contributors, see the "Contributors" section of Pylint's README
+file.
+
+.. _Logilab: http://www.logilab.fr/
+
+1.4 Who uses Pylint?
+--------------------
+
+Everybody knows someone who uses Pylint.
 
 2. Installation
 ===============
@@ -25,41 +48,27 @@ standard, and tries to enforce a coding style.
 2.1 How do I install Pylint?
 ----------------------------
 
-Everything should be explained on :ref:`installation`.
+Everything should be explained on http://docs.pylint.org/installation
 
 2.2 What kind of versioning system does Pylint use?
 ---------------------------------------------------
 
-Pylint uses the git distributed version control system. The URL of the
-repository is: https://github.com/PyCQA/pylint . To get the latest version of
+Pylint uses the Mercurial_ distributed version control system. The URL of the
+repository is: https://bitbucket.org/logilab/pylint. To get the latest version of
 Pylint from the repository, simply invoke ::
 
-    git clone https://github.com/PyCQA/pylint
+    hg clone https://bitbucket.org/logilab/pylint
 
-.. _git: http://git-scm.com/
+.. _Mercurial: http://mercurial.selenic.com/
 
 2.3 What are Pylint's dependencies?
 -----------------------------------
 
-Pylint depends on astroid_ and a couple of other packages.
-See the following section for details on what versions of Python are
-supported.
+Pylint requires the latest `astroid`_ and `logilab-common`_ packages. It should be
+compatible with any Python version greater than 2.5.0.
 
-.. _`astroid`: https://github.com/PyCQA/astroid
-
-2.4 What versions of Python is Pylint supporting?
---------------------------------------------------
-
-Since Pylint 2.X, the supported running environment is Python 3.5+.
-
-That is, Pylint 2.X is still able to analyze Python 2 files, but some
-specific checks might not work, as they would assume that their running
-environment was Python 2.
-
-If you need to run pylint with Python 2, then Pylint 1.8 or 1.9 is for you.
-We will still do backports of bug fixes, and possibly for various Python 3
-compatibility checks, at least until 2020, after which we'll stop support
-Python 2 altogether.
+.. _`astroid`: https://bitbucket.org/logilab/astroid
+.. _`logilab-common`: http://www.logilab.org/project/logilab-common
 
 
 3. Running Pylint
@@ -77,8 +86,8 @@ the file's path using the python path. Some examples :
 directory is automatically added on top of the python path
 
 "pylint directory/mymodule.py" will work if "directory" is a python
-package (i.e. has an __init__.py file), an implicit namespace package
-or if "directory" is in the python path.
+package (i.e. has an __init__.py file) or if "directory" is in the
+python path.
 
 "pylint /whatever/directory/mymodule.py" will work if either:
 
@@ -88,8 +97,6 @@ or if "directory" is in the python path.
 
 	- "directory" is a python package and "/whatever" is in the python
           path
-
-        - "directory" is an implicit namespace package and is in the python path.
 
 	- "directory" is a python package and your cwd is "/whatever" and so
           on...
@@ -121,8 +128,7 @@ For example::
 3.4 I'd rather not run Pylint from the command line. Can I integrate it with my editor?
 ---------------------------------------------------------------------------------------
 
-Much probably. Read :ref:`ide-integration`
-
+Much probably. Read http://docs.pylint.org/ide-integration
 
 4. Message Control
 ==================
@@ -152,9 +158,9 @@ module. Pylint 0.26.1 and up have renamed that directive to
 "#pylint: skip-file" (but the first version will be kept for backward
 compatibility).
 
-In order to ease finding which modules are ignored an Information-level message
-`file-ignored` is emitted. With recent versions of Pylint, if you use the old
-syntax, an additional `deprecated-disable-all` message is emitted.
+In order to ease finding which modules are ignored a Information-level message
+`file-ignored` is emited. With recent versions of Pylint, if you use the old
+syntax, an additional `deprecated-disable-all` message is emited.
 
 4.4 Do I have to remember all these numbers?
 --------------------------------------------
@@ -163,6 +169,7 @@ No, starting from 0.25.3, you can use symbolic names for messages::
 
     # pylint: disable=fixme, line-too-long
 
+You can show these symbols in the output with the `-sy` option.
 
 4.5 I have a callback function where I have no control over received arguments. How do I avoid getting unused argument warnings?
 ----------------------------------------------------------------------------------------------------------------------------------
@@ -185,27 +192,54 @@ tricks like: ::
      method-hidden,
      too-many-lines
 
+4.7 Why do I get a lot of spurious "unused variables messages" when using psyobj from psyco_?
+----------------------------------------------------------------------------------------------
 
-4.7 Why are there a bunch of messages disabled by default?
-----------------------------------------------------------
+This is actually due to a bug in psyco, making the locals()
+function for objects inheriting from *psyobj* returning an empty
+dictionary. For the moment, the only way to fix this is to use the
+PYLINT_IMPORT environment variable to not use psyco during Pylint
+checking. Sample code ::
 
-pylint does have some messages disabled by default, either because
-they are prone to false positives or that they are opinionated enough
-for not being included as default messages. But most of the disabled
-messages are from the Python 3 porting checker, which is disabled by
-default. It needs special activation with the ``--py3k`` flag.
+	import os
+	try:
+		if os.environ.has_key('PYLINT_IMPORT'):
+			raise ImportError()
+	from psyco.classes import psyobj
+	except ImportError:
+		class psyobj:
+			pass
+
+NOTICE: this problem should not occur with Pylint >= 0.5 since from
+this version Pylint is not looking anymore for information in living
+objects (i.e. it no longer imports analysed modules)
+
+.. _psyco: http://psyco.sf.net
 
 5. Classes and Inheritance
 ==========================
 
+5.1 When is Pylint considering a class as an interface?
+-------------------------------------------------------
 
-5.1 When is Pylint considering a class as an abstract class?
+A class is considered as an interface if there is a class named "Interface"
+somewhere in its inheritance tree.
+
+5.2 When is Pylint considering that a class is implementing a given interface?
+--------------------------------------------------------------------------------
+
+Pylint is using the Zope 2 interfaces conventions, and so is
+considering that a class is implementing interfaces listed in its
+__implements__ attribute.
+
+
+5.3 When is Pylint considering a class as an abstract class?
 -------------------------------------------------------------
 
 A class is considered as an abstract class if at least one of its
 methods is doing nothing but raising NotImplementedError.
 
-5.2 How do I avoid "access to undefined member" messages in my mixin classes?
+5.4 How do I avoid "access to undefined member" messages in my mixin classes?
 -------------------------------------------------------------------------------
 
 To do so you have to set the ignore-mixin-members option to
@@ -225,16 +259,25 @@ lower bound on it. By default, the formula to calculate score is ::
     10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10)
 
 However, this option can be changed in the Pylint rc file. If having negative
-values really bugs you, you can set the formula to be the maximum of 0 and the
+values really bugs you, you can set the formula to be the minimum of 0 and the
 above expression.
 
 
-6.2 I think I found a bug in Pylint. What should I do?
+6.2 Why does Pychecker catch problems with imports that Pylint doesn't?
+------------------------------------------------------------------------
+
+Pychecker and Pylint use different approaches.  pychecker
+imports the modules and rummages around in the result, hence it sees my
+mangled sys.path.  Pylint doesn't import any of the candidate modules and
+thus doesn't include any of import's side effects (good and bad).  It
+traverses an AST representation of the code.
+
+6.3 I think I found a bug in Pylint. What should I do?
 -------------------------------------------------------
 
-Read :ref:`Bug reports, feedback`
+Read http://docs.pylint.org/contribute#bug-reports-feedback
 
-6.3 I have a question about Pylint that isn't answered here.
+6.4 I have a question about Pylint that isn't answered here.
 ------------------------------------------------------------
 
-Read :ref:`Mailing lists`
+Read http://docs.pylint.org/contribute#mailing-lists

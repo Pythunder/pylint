@@ -1,9 +1,3 @@
-pylint (1.4.1-1) precise; urgency=low
-
-  * new upstream release
-
- -- Ionel Cristian Maries <contact@ionelmc.ro>  Sun, 15 Feb 2015 12:11:44 +0200
-
 pylint (1.2.1-1) unstable; urgency=low
 
   * new upstream release
@@ -529,7 +523,7 @@ logilab-pylint (0.1.2-1) unstable; urgency=low
 
 logilab-pylint (0.1.1-2) unstable; urgency=low
 
-  * fix dependencies to logilab.common
+  * fix dependencie to logilab.common
 
  -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed,  4 Jun 2003 18:07:45 +0200
 

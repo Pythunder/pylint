@@ -2,10 +2,10 @@
 
 __revision__ = None
 
-class SomeClass:
+class SomeClass(object):
     """cds"""
     doc = __doc__
-    
+
     def __init__(self):
         """only to make pylint happier"""
 

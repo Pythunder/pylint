@@ -1,19 +1,19 @@
-# pylint:disable-msg=R0201
+# pylint:disable=R0201
 """docstring"""
 __revision__ = ''
 
-class Interface:
+class Interface(object):
     """base class for interfaces"""
 
 class IMachin(Interface):
     """docstring"""
     def truc(self):
         """docstring"""
-        
+
     def troc(self, argument):
         """docstring"""
 
-class Correct1:
+class Correct1(object):
     """docstring"""
     __implements__ = IMachin
 
@@ -23,12 +23,12 @@ class Correct1:
     def truc(self):
         """docstring"""
         pass
-    
+
     def troc(self, argument):
         """docstring"""
         pass
-    
-class Correct2:
+
+class Correct2(object):
     """docstring"""
     __implements__ = (IMachin,)
 
@@ -38,12 +38,12 @@ class Correct2:
     def truc(self):
         """docstring"""
         pass
-    
+
     def troc(self, argument):
         """docstring"""
         print argument
 
-class MissingMethod:
+class MissingMethod(object):
     """docstring"""
     __implements__ = IMachin,
 
@@ -53,47 +53,62 @@ class MissingMethod:
     def troc(self, argument):
         """docstring"""
         print argument
-   
+
     def other(self):
         """docstring"""
-     
-class BadArgument:
+
+class BadArgument(object):
     """docstring"""
     __implements__ = (IMachin,)
 
     def __init__(self):
         pass
- 
+
     def truc(self):
         """docstring"""
         pass
-    
+
     def troc(self):
         """docstring"""
         pass
-    
-class InterfaceCantBeFound:
+
+class InterfaceCantBeFound(object):
     """docstring"""
     __implements__ = undefined
 
     def __init__(self):
         """only to make pylint happier"""
-    
+
     def please(self):
         """public method 1/2"""
 
     def besilent(self):
         """public method 2/2"""
 
-class InterfaceCantBeFound2:
+class InterfaceCanNowBeFound(object):
     """docstring"""
     __implements__ = BadArgument.__implements__ + Correct2.__implements__
 
     def __init__(self):
         """only to make pylint happier"""
-    
+
     def please(self):
         """public method 1/2"""
 
     def besilent(self):
         """public method 2/2"""
+
+
+class EmptyImplements(object):
+    """no pb"""
+    __implements__ = ()
+    def __init__(self):
+        """only to make pylint happier"""
+
+    def please(self):
+        """public method 1/2"""
+
+    def besilent(self):
+        """public method 2/2"""
+
+

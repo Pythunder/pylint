@@ -1,4 +1,4 @@
-# Copyright (c) 2003-2005 LOGILAB S.A. (Paris, FRANCE).
+# Copyright (c) 2003-2013 LOGILAB S.A. (Paris, FRANCE).
 # http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This program is free software; you can redistribute it and/or modify it under
@@ -12,7 +12,7 @@
 #
 # You should have received a copy of the GNU General Public License along with
 # this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 """utilities methods and classes for checkers
 
 Base id of standard checkers (used in msg and report ids):
@@ -26,18 +26,28 @@ Base id of standard checkers (used in msg and report ids):
 08: similar
 09: design_analysis
 10: newstyle
+11: typecheck
+12: logging
+13: string_format
+14: string_constant
+15-50: not yet used: reserved for future internal checkers.
+51-99: perhaps used: reserved for external checkers
+
+The raw_metrics checker has no number associated since it doesn't emit any
+messages nor reports. XXX not true, emit a 07 report !
+
 """
 
-__revision__ = "$Id: __init__.py,v 1.21 2005-11-21 23:08:11 syt Exp $"
-
+import sys
 import tokenize
-from os import listdir
-from os.path import dirname, join, isdir, splitext
+import warnings
 
-from logilab.astng.utils import ASTWalker
 from logilab.common.configuration import OptionsProviderMixIn
 
-from pylint.reporters import diff_string, EmptyReport
+from pylint.reporters import diff_string
+from pylint.utils import register_plugins
+from pylint.interfaces import UNDEFINED
+
 
 def table_lines_from_stats(stats, old_stats, columns):
     """get values listed in <columns> from <stats> and <old_stats>,
@@ -59,108 +69,77 @@ def table_lines_from_stats(stats, old_stats, columns):
         lines += (m_type.replace('_', ' '), format(new), old, diff_str)
     return lines
 
-    
-class BaseChecker(OptionsProviderMixIn, ASTWalker):
-    """base class for checkers"""
 
-    options = ()
-    priority = -9
-    may_be_disabled = True
+class BaseChecker(OptionsProviderMixIn):
+    """base class for checkers"""
+    # checker name (you may reuse an existing one)
     name = None
-    
+    # options level (0 will be displaying in --help, 1 in --long-help)
+    level = 1
+    # ordered list of options to control the ckecker behaviour
+    options = ()
+    # messages issued by this checker
+    msgs = {}
+    # reports issued by this checker
+    reports = ()
+
     def __init__(self, linter=None):
         """checker instances should have the linter as argument
 
         linter is an object implementing ILinter
         """
-        ASTWalker.__init__(self, self)
         self.name = self.name.lower()
-        if self.may_be_disabled:
-            opt_name = 'enable-' + self.name
-            self.options = (
-                (opt_name,
-                 {'type' : 'yn', 'default' : 1, 'metavar': '<y_or_n>',
-                  'help' : "Enable / disable this checker"})
-                ,) + self.options            
         OptionsProviderMixIn.__init__(self)
         self.linter = linter
-        
-    def add_message(self, msg_id, line=None, node=None, args=None):
+
+    def add_message(self, msg_id, line=None, node=None, args=None, confidence=UNDEFINED):
         """add a message of a given type"""
-        self.linter.add_message(msg_id, line, node, args)
-
-    def is_enabled(self):
-        """return true if the checker is enabled"""
-        opt = 'enable_' + self.name
-        return getattr(self.config, opt, 1)
-
-    def enable(self, enable):
-        """enable / disable this checker if true / false is given
-
-        it false values has no effect if the checker can't be disabled
-        """
-        if self.may_be_disabled:
-            setattr(self.config, 'enable_' + self.name, enable)
-        
-    def package_dir(self):
-        """return the base directory for the analysed package"""
-        return dirname(self.linter.base_file)
-
+        self.linter.add_message(msg_id, line, node, args, confidence)
 
     # dummy methods implementing the IChecker interface
-    
+
     def open(self):
         """called before visiting project (i.e set of modules)"""
-    
+
     def close(self):
         """called after visiting project (i.e set of modules)"""
 
+
 class BaseRawChecker(BaseChecker):
     """base class for raw checkers"""
-    
-    def process_module(self, stream):
+
+    def process_module(self, node):
         """process a module
-        
+
         the module's content is accessible via the stream object
-        
-        stream must implements the readline method
+
+        stream must implement the readline method
         """
-        self.process_tokens(tokenize.generate_tokens(stream.readline))
-    
+        warnings.warn("Modules that need access to the tokens should "
+                      "use the ITokenChecker interface.",
+                      DeprecationWarning)
+        stream = node.file_stream
+        stream.seek(0) # XXX may be removed with astroid > 0.23
+        if sys.version_info <= (3, 0):
+            self.process_tokens(tokenize.generate_tokens(stream.readline))
+        else:
+            self.process_tokens(tokenize.tokenize(stream.readline))
+
     def process_tokens(self, tokens):
-        """should be overiden by subclasses"""
+        """should be overridden by subclasses"""
         raise NotImplementedError()
 
 
-PY_EXTS = ('.py', '.pyc', '.pyo', '.pyw', '.so', '.dll')
+class BaseTokenChecker(BaseChecker):
+    """Base class for checkers that want to have access to the token stream."""
+
+    def process_tokens(self, tokens):
+        """Should be overridden by subclasses."""
+        raise NotImplementedError()
+
 
 def initialize(linter):
     """initialize linter with checkers in this package """
-    package_load(linter, __path__[0])
+    register_plugins(linter, __path__[0])
 
-def package_load(linter, directory):
-    """load all module and package in the given directory, looking for a
-    'register' function in each one, used to register pylint checkers
-    """
-    globs = globals()
-    imported = {}
-    for filename in listdir(directory):
-        basename, extension = splitext(filename)
-        if not imported.has_key(basename) and (
-            (extension in PY_EXTS and basename != '__init__') or (
-             not extension and not basename == 'CVS' and
-             isdir(join(directory, basename)))):
-            try:
-                module = __import__(basename, globs, globs, None)
-            except ValueError:
-                # empty module name (usually emacs auto-save files)
-                continue
-            except ImportError:
-                import sys
-                print >> sys.stderr, "Problem importing module: %s" % filename
-            else:
-                if hasattr(module, 'register'):
-                    module.register(linter)
-                    imported[basename] = 1
-                
-__all__ = ('CheckerHandler', 'BaseChecker', 'initialize', 'package_load')
+__all__ = ('BaseChecker', 'initialize')

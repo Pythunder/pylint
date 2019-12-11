@@ -1,81 +1,79 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# pylint: disable=W0404,W0622,W0613
-# Copyright (c) 2006, 2009-2010, 2012-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
-# Copyright (c) 2010 Julien Jehannet <julien.jehannet@logilab.fr>
-# Copyright (c) 2012 FELD Boris <lothiraldan@gmail.com>
-# Copyright (c) 2013 Benedikt Morbach <benedikt.morbach@googlemail.com>
-# Copyright (c) 2013 T.Rzepka <Tobias.Rzepka@gmail.com>
-# Copyright (c) 2014-2018 Claudiu Popa <pcmanticore@gmail.com>
-# Copyright (c) 2014 Pedro Algarvio <pedro@algarvio.me>
-# Copyright (c) 2014 Brett Cannon <brett@python.org>
-# Copyright (c) 2014 Google, Inc.
-# Copyright (c) 2014 Ricardo Gemignani <ricardo.gemignani@gmail.com>
-# Copyright (c) 2015 Ionel Cristian Maries <contact@ionelmc.ro>
-# Copyright (c) 2016 Florian Bruhin <me@the-compiler.org>
-# Copyright (c) 2017 Hugo <hugovk@users.noreply.github.com>
-
-# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
-# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
-
+# pylint: disable=W0404,W0622,W0704,W0613
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
+#
+# This file is part of pylint.
+#
+# pylint is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation, either version 2.1 of the License, or (at your option) any
+# later version.
+#
+# pylint is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License along
+# with pylint.  If not, see <http://www.gnu.org/licenses/>.
 """Generic Setup script, takes package info from __pkginfo__.py file.
 """
-from distutils.command.build_py import build_py
-import os
-from os.path import exists, isdir, join
-import sys
-
+from __future__ import absolute_import, print_function
 __docformat__ = "restructuredtext en"
 
+import os
+import sys
+import shutil
+from os.path import isdir, exists, join
 
 try:
+    if os.environ.get('NO_SETUPTOOLS'):
+        raise ImportError()
     from setuptools import setup
-    from setuptools.command import easy_install as easy_install_lib
-    from setuptools.command import install_lib  # pylint: disable=unused-import
-
+    from setuptools.command import install_lib
     USE_SETUPTOOLS = 1
 except ImportError:
     from distutils.core import setup
-    from distutils.command import install_lib  # pylint: disable=unused-import
-
+    from distutils.command import install_lib
     USE_SETUPTOOLS = 0
-    easy_install_lib = None
 
+from distutils.command.build_py import build_py
 
-base_dir = os.path.dirname(__file__)
+sys.modules.pop('__pkginfo__', None)
+# import optional features
+__pkginfo__ = __import__("__pkginfo__")
+# import required features
+from __pkginfo__ import modname, version, license, description, \
+     web, author, author_email, classifiers
 
-__pkginfo__ = {}
-with open(os.path.join(base_dir, "pylint", "__pkginfo__.py")) as pkginfo_fp:
-    exec(pkginfo_fp.read(), __pkginfo__)
-scripts = __pkginfo__.get("scripts", [])
-data_files = __pkginfo__.get("data_files", None)
-ext_modules = __pkginfo__.get("ext_modules", None)
-install_requires = __pkginfo__.get("install_requires", None)
-dependency_links = __pkginfo__.get("dependency_links", [])
-extras_require = __pkginfo__.get("extras_require", {})
+distname = getattr(__pkginfo__, 'distname', modname)
+scripts = getattr(__pkginfo__, 'scripts', [])
+data_files = getattr(__pkginfo__, 'data_files', None)
+subpackage_of = getattr(__pkginfo__, 'subpackage_of', None)
+include_dirs = getattr(__pkginfo__, 'include_dirs', [])
+ext_modules = getattr(__pkginfo__, 'ext_modules', None)
+install_requires = getattr(__pkginfo__, 'install_requires', None)
+dependency_links = getattr(__pkginfo__, 'dependency_links', [])
 
-readme_path = join(base_dir, "README.rst")
-if exists(readme_path):
-    with open(readme_path) as stream:
-        long_description = stream.read()
+STD_BLACKLIST = ('CVS', '.svn', '.hg', 'debian', 'dist', 'build')
+
+IGNORED_EXTENSIONS = ('.pyc', '.pyo', '.elc', '~')
+
+if exists('README'):
+    long_description = open('README').read()
 else:
-    long_description = ""
-
-
-needs_pytest = set(['pytest', 'test', 'ptr']).intersection(sys.argv)
-pytest_runner = ['pytest-runner'] if needs_pytest else []
-
+    long_description = ''
 
 def ensure_scripts(linux_scripts):
     """Creates the proper script names required for each platform
     (taken from 4Suite)
     """
     from distutils import util
-
-    if util.get_platform()[:3] == "win":
-        return linux_scripts + [script + ".bat" for script in linux_scripts]
+    if util.get_platform()[:3] == 'win':
+        return linux_scripts + [script + '.bat' for script in linux_scripts]
     return linux_scripts
-
 
 def get_packages(directory, prefix):
     """return a list of subpackages for the given directory"""
@@ -83,75 +81,118 @@ def get_packages(directory, prefix):
     for package in os.listdir(directory):
         absfile = join(directory, package)
         if isdir(absfile):
-            if exists(join(absfile, "__init__.py")):
+            if exists(join(absfile, '__init__.py')):
                 if prefix:
-                    result.append("%s.%s" % (prefix, package))
+                    result.append('%s.%s' % (prefix, package))
                 else:
                     result.append(package)
                 result += get_packages(absfile, result[-1])
     return result
 
+EMPTY_FILE = '''"""generated file, don't modify or your data will be lost"""
+try:
+    __import__('pkg_resources').declare_namespace(__name__)
+except ImportError:
+    pass
+'''
 
-def _filter_tests(files):
-    testdir = join("pylint", "test")
-    return [f for f in files if testdir not in f]
+class MyInstallLib(install_lib.install_lib):
+    """extend install_lib command to handle package __init__.py and
+    include_dirs variable if necessary
+    """
+    def run(self):
+        """overridden from install_lib class"""
+        install_lib.install_lib.run(self)
+        # create Products.__init__.py if needed
+        if subpackage_of:
+            product_init = join(self.install_dir, subpackage_of, '__init__.py')
+            if not exists(product_init):
+                self.announce('creating %s' % product_init)
+                stream = open(product_init, 'w')
+                stream.write(EMPTY_FILE)
+                stream.close()
+        # manually install included directories if any
+        if include_dirs:
+            if subpackage_of:
+                base = join(subpackage_of, modname)
+            else:
+                base = modname
+            for directory in include_dirs:
+                dest = join(self.install_dir, base, directory)
+                if sys.version_info >= (3, 0):
+                    exclude = set(('func_unknown_encoding.py',
+                                   'func_invalid_encoded_data.py',
+                                   'invalid_encoded_data.py'))
+                else:
+                    exclude = set()
+                shutil.rmtree(dest, ignore_errors=True)
+                shutil.copytree(directory, dest)
+                # since python2.5's copytree doesn't support the ignore
+                # parameter, the following loop to remove the exclude set
+                # was added
+                for (dirpath, _, filenames) in os.walk(dest):
+                    for n in filenames:
+                        if n in exclude:
+                            os.remove(os.path.join(dirpath, n))
+                if sys.version_info >= (3, 0):
+                    # process manually python file in include_dirs (test data)
+                    # pylint: disable=no-name-in-module
+                    from distutils.util import run_2to3
+                    print(('running 2to3 on', dest))
+                    run_2to3([dest])
 
-
-if easy_install_lib:
-
-    class easy_install(easy_install_lib.easy_install):
-        # override this since pip/easy_install attempt to byte compile
-        # test data files, some of them being syntactically wrong by design,
-        # and this scares the end-user
-        def byte_compile(self, files):
-            files = _filter_tests(files)
-            easy_install_lib.easy_install.byte_compile(self, files)
-
+    # override this since pip/easy_install attempt to byte compile test data
+    # files, some of them being syntactically wrong by design, and this scares
+    # the end-user
+    def byte_compile(self, files):
+        testdir = join('pylint', 'test')
+        files = [f for f in files if testdir not in f]
+        install_lib.install_lib.byte_compile(self, files)
 
 def install(**kwargs):
     """setup entry point"""
     if USE_SETUPTOOLS:
-        if "--force-manifest" in sys.argv:
-            sys.argv.remove("--force-manifest")
-    packages = ["pylint"] + get_packages(join(base_dir, "pylint"), "pylint")
+        if '--force-manifest' in sys.argv:
+            sys.argv.remove('--force-manifest')
+    # install-layout option was introduced in 2.5.3-1~exp1
+    elif sys.version_info < (2, 5, 4) and '--install-layout=deb' in sys.argv:
+        sys.argv.remove('--install-layout=deb')
+    if subpackage_of:
+        package = subpackage_of + '.' + modname
+        kwargs['package_dir'] = {package : '.'}
+        packages = [package] + get_packages(os.getcwd(), package)
+        if USE_SETUPTOOLS:
+            kwargs['namespace_packages'] = [subpackage_of]
+    else:
+        kwargs['package_dir'] = {modname : '.'}
+        packages = [modname] + get_packages(os.getcwd(), modname)
     if USE_SETUPTOOLS:
         if install_requires:
-            kwargs["install_requires"] = install_requires
-            kwargs["dependency_links"] = dependency_links
-        kwargs["entry_points"] = {
-            "console_scripts": [
-                "pylint = pylint:run_pylint",
-                "epylint = pylint:run_epylint",
-                "pyreverse = pylint:run_pyreverse",
-                "symilar = pylint:run_symilar",
-            ]
-        }
-    kwargs["packages"] = packages
-    cmdclass = {"build_py": build_py}
-    if easy_install_lib:
-        cmdclass["easy_install"] = easy_install
-    return setup(
-        name="pylint",
-        version=__pkginfo__["version"],
-        license=__pkginfo__["license"],
-        description=__pkginfo__["description"],
-        long_description=long_description,
-        author=__pkginfo__["author"],
-        author_email=__pkginfo__["author_email"],
-        url=__pkginfo__["web"],
-        scripts=ensure_scripts(scripts),
-        classifiers=__pkginfo__["classifiers"],
-        data_files=data_files,
-        ext_modules=ext_modules,
-        cmdclass=cmdclass,
-        extras_require=extras_require,
-        test_suite="test",
-        python_requires=">=3.5.*",
-        setup_requires=pytest_runner,
-        tests_require=["pytest"],
-        **kwargs
-    )
+            kwargs['install_requires'] = install_requires
+            kwargs['dependency_links'] = dependency_links
+        kwargs['entry_points'] = {'console_scripts': [
+            'pylint = pylint:run_pylint',
+            'pylint-gui = pylint:run_pylint_gui',
+            'epylint = pylint:run_epylint',
+            'pyreverse = pylint:run_pyreverse',
+            'symilar = pylint:run_symilar',
+        ]}
+    kwargs['packages'] = packages
+    return setup(name=distname,
+                 version=version,
+                 license=license,
+                 description=description,
+                 long_description=long_description,
+                 author=author,
+                 author_email=author_email,
+                 url=web,
+                 scripts=ensure_scripts(scripts),
+                 classifiers=classifiers,
+                 data_files=data_files,
+                 ext_modules=ext_modules,
+                 cmdclass={'install_lib': MyInstallLib,
+                           'build_py': build_py},
+                 **kwargs)
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     install()
