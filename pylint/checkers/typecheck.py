@@ -395,6 +395,11 @@ MSGS = {
         "non-str-assignment-to-dunder-name",
         "Emitted when a non-string vaue is assigned to __name__",
     ),
+    "W1116": (
+        "Second argument of isinstance is not a type",
+        "isinstance-second-argument-not-valid-type",
+        "Emitted when the second argument of an isinstance call is not a type.",
+    ),
 }
 
 # builtin sequence types in Python 2 and 3.
@@ -671,6 +676,19 @@ def _is_c_extension(module_node):
         not modutils.is_standard_module(module_node.name)
         and not module_node.fully_defined()
     )
+
+
+def _is_invalid_isinstance_type(arg):
+    # Return True if we are sure that arg is not a type
+    inferred = utils.safe_infer(arg)
+    if not inferred:
+        # Cannot infer it so skip it.
+        return False
+    if isinstance(inferred, astroid.Tuple):
+        return any(_is_invalid_isinstance_type(elt) for elt in inferred.elts)
+    if isinstance(inferred, astroid.ClassDef):
+        return False
+    return True
 
 
 class TypeChecker(BaseChecker):
@@ -1167,6 +1185,15 @@ accessed. Python regular expressions are accepted.",
         if calling_parg_names != called_param_names[: len(calling_parg_names)]:
             self.add_message("arguments-out-of-order", node=node, args=())
 
+    def _check_isinstance_args(self, node):
+        if len(node.args) != 2:
+            # isinstance called with wrong number of args
+            return
+
+        second_arg = node.args[1]
+        if _is_invalid_isinstance_type(second_arg):
+            self.add_message("isinstance-second-argument-not-valid-type", node=node)
+
     # pylint: disable=too-many-branches,too-many-locals
     @check_messages(*(list(MSGS.keys())))
     def visit_call(self, node):
@@ -1201,6 +1228,9 @@ accessed. Python regular expressions are accepted.",
             return
 
         if called.args.args is None:
+            if called.name == "isinstance":
+                # Verify whether second argument of isinstance is a valid type
+                self._check_isinstance_args(node)
             # Built-in functions have no argument information.
             return
 
