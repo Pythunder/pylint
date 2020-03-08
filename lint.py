@@ -63,6 +63,22 @@ from pylint.__pkginfo__ import version
 import six
 
 
+def _get_new_args(message):
+    location = (
+        message.abspath,
+        message.path,
+        message.module,
+        message.obj,
+        message.line,
+        message.column,
+    )
+    return (
+        message.msg_id,
+        message.symbol,
+        location,
+        message.msg,
+        message.confidence,
+    )
 
 def _get_python_path(filepath):
     dirname = os.path.dirname(os.path.realpath(
