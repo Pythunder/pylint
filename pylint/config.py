@@ -512,7 +512,7 @@ Please report bugs on the project\'s mailing list:
 .SH AUTHOR
 %s <%s>
 """ % (
-            getattr(pkginfo, "debian_name", pkginfo.modname),
+            getattr(pkginfo, "debian_name", "pylint"),
             pkginfo.mailinglist,
             pkginfo.author,
             pkginfo.author_email,

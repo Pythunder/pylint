@@ -649,7 +649,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if not node.exc:
             return
         exc = utils.safe_infer(node.exc)
-        if exc is None or exc is astroid.Uninferable:
+        if not exc or not isinstance(exc, (astroid.Instance, astroid.ClassDef)):
             return
         if self._check_exception_inherit_from_stopiteration(exc):
             self.add_message("stop-iteration-return", node=node)
@@ -1170,7 +1170,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 #  to infer it.
                 return True
             exc = utils.safe_infer(node.exc)
-            if exc is None or exc is astroid.Uninferable:
+            if exc is None or exc is astroid.Uninferable or not hasattr(exc, "pytype"):
                 return False
             exc_name = exc.pytype().split(".")[-1]
             handlers = utils.get_exception_handlers(node, exc_name)
